@@ -56,10 +56,16 @@ end
 
 
 def convert(options)
-  base = RDF::Vocabulary.new('http://rdf.biosemantics.org/data/referencesequences/' + options[:name] + '#')
+  base = RDF::Vocabulary.new('http://rdf.biosemantics.org/data/genomeassemblies/' + options[:name] + '#')
 
   graph = RDF::Graph.new(base)
   $prefixes[nil] = base
+
+  # some meta data on the file.
+  graph << [base[''], RDF.type, DC.document]
+  graph << [base[''], DC.creator, 'Zuotian Tatum']
+  graph << [base[''], DC.created, Time.now.utc.iso8601]
+
   graph << [base['Assembly'], RDF.type, RS.GenomeAssembly]
 
   File.open(options[:input], 'r') do |f|
