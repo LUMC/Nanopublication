@@ -1,6 +1,6 @@
-# take a genome assembly report and convert it to triples.
-# triples include a URI to the genome assembly, and URIs to all reference sequences that are part of this
-# genome build.
+# take a NCBI genome assembly report and convert it to triples.
+# triples include a URI of the genome assembly, and URIs of all reference sequences that 
+# are part of this genome build.
 # you can find assembly reports at ftp://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/
 
 require 'rdf'
@@ -13,42 +13,83 @@ require 'titlecase'
 DC = RDF::DC
 RDFS = RDF::RDFS
 XSD = RDF::XSD
-RS = RDF::Vocabulary.new('http://rdf.biosemantics.org/ontologies/ReferenceSequence#')
-GB = RDF::Vocabulary.new('http://rdf.biosemantics.org/ontologies/GeneBank#')
+RS = RDF::Vocabulary.new('http://rdf.biosemantics.org/ontologies/referencesequence#')
 HG = RDF::Vocabulary.new('http://rdf.biosemantics.org/data/genomes/humangenome#')
-
+NCBI = RDF::Vocabulary.new('http://rdf.biosemantics.org/ontologies/ncbiassembly#')
+TMP = RDF::Vocabulary.new('http://tmp#')
 $prefixes = {
     :dcterms => DC,
     :rdf => RDF,
     :xsd => XSD,
     :rdfs => RDFS,
     :rs => RS,
-    :gb => GB,
+    :ncbi => NCBI,
     :hg =>HG
 }
 
-# say something about the genome assembly.
-
 # @param [Object] row
 def convert_reference_sequence(graph, row, base)
-  name, role, cp, genebank_accn, refseq_accn, unit = row.split("\t")
-  if unit == 'Primary Assembly' or unit == 'non-nuclear'
+    name, role, cp, genbank_accn, refseq_accn, unit = row.split("\t")
     graph << [base[name], RDF.type, RS.ReferenceSequence]
     graph << [base[name], DC.partOf, base['Assembly']]
-    graph << [base[name], RS.role, role]
-    graph << [base[name], RS.assemblyUnit, unit]
+    graph << [base[name], NCBI.hasRole, NCBI[role.downcase.gsub(/[\s\-]/, '_')]]
+    graph << [base[name], NCBI.inAssemblyUnit, NCBI[unit.downcase.gsub(/[\s\-]/, '_')]]
+
     if not cp.empty?
-      graph << [base[name], RS.locatesIn, HG['chr' + cp]]
+        if role == 'chromosome'
+            graph << [base[name], RS.represents, HG['chr' + cp]]
+        else 
+            graph << [base[name], RS.isAssociatedWith, HG['chr' + cp]]
+        end
     end
-    graph << [base[name], RDFS.seeAlso, RDF::URI.new('http://www.ncbi.nlm.nih.gov/nuccore/' + genebank_accn)]
-    graph << [base[name], RDFS.seeAlso, RDF::URI.new('http://www.ncbi.nlm.nih.gov/nuccore/' + refseq_accn)]
-  end
+
+    if not genbank_accn.empty?
+        graph << [base[name], RS.genBankID, genbank_accn]
+    end
+
+    if not refseq_accn.empty?
+        graph << [base[name], RS.refSeqID, refseq_accn]
+    end
 end
 
 def annotate_assembly(graph, row, base)
+
+  annotation_mapping = {
+      'Assembly Name' => DC.title,
+      'Description' => RDFS.label,
+      'Organism name' => NCBI.organism,
+      'Taxid' => NCBI.taxID,
+      'Submitter' => DC.creator,
+      'Release type' => NCBI.releaseType,
+      'Genome representation' => NCBI.genomeRepresentation
+  }
+
+  assembly = base['Assembly']
+
   if row =~ /\#\ ([^\:]+)\:\s*(.+)/
     description, value = $1, $2
-    graph << [base['Assembly'], GB[description.titlecase.gsub(/\s/, '')], value]
+    if annotation_mapping.has_key?(description)
+        graph << [assembly, annotation_mapping[description], value]
+    elsif description == 'Assembly level'
+        graph << [assembly, NCBI.level, NCBI[value.downcase + '_level']]
+    elsif description == 'GenBank Assembly ID'
+        if value =~ /([^\s]+)\s*\(([\w]+)\)/
+            id, status = $1, $2
+            graph << [assembly, RS.genBankAssemblyID, id]
+        else
+            graph << [assembly, RS.genBankAssemblyID, value]
+        end
+    elsif description == 'Assembly type'
+        case value
+        when 'haploid-with-alt-loci'
+            graph << [assembly, RDF.type, NCBI.HaploidAltAssembly]
+        else
+            graph << [assembly, RDF.type, RS.GenomeAssemlby]
+        end
+    else
+        description = description.titlecase.gsub(/\s/, '')
+        graph << [assembly, TMP[description], value]
+    end
   else
     puts 'row not conforming to format, ignore'
   end
@@ -65,8 +106,6 @@ def convert(options)
   graph << [base[''], RDF.type, DC.document]
   graph << [base[''], DC.creator, 'Zuotian Tatum']
   graph << [base[''], DC.created, Time.now.utc.iso8601]
-
-  graph << [base['Assembly'], RDF.type, RS.GenomeAssembly]
 
   File.open(options[:input], 'r') do |f|
     while line = f.gets
