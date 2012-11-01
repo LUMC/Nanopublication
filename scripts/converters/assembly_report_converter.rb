@@ -6,7 +6,6 @@
 require 'rdf'
 require 'rdf/turtle'
 require 'optparse'
-require 'titlecase'
 
 
 # namespaces
@@ -57,8 +56,6 @@ def annotate_assembly(graph, row, base)
   annotation_mapping = {
       'Assembly Name' => DC.title,
       'Description' => RDFS.label,
-      'Organism name' => NCBI.organism,
-      'Taxid' => NCBI.taxID,
       'Submitter' => DC.creator,
       'Release type' => NCBI.releaseType,
       'Genome representation' => NCBI.genomeRepresentation
@@ -86,9 +83,10 @@ def annotate_assembly(graph, row, base)
         else
             graph << [assembly, RDF.type, RS.GenomeAssemlby]
         end
+    elsif description == 'Taxid'
+        graph << [assembly, NCBI.taxID, RDF::URI.new('http://purl.obolibrary.org/obo/NCBITaxon_' + value)]
     else
-        description = description.titlecase.gsub(/\s/, '')
-        graph << [assembly, TMP[description], value]
+        puts 'ignore annotation "' + description + '"'
     end
   else
     puts 'row not conforming to format, ignore'
