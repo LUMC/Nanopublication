@@ -77,7 +77,7 @@ class Fantom5_Nanopub_Converter < RDF_Converter
 
 	protected
 	def create_class1_nanopub(annotation)
-		if annotation =~ /chr(\d+):(\d+)\.\.(\d+),([#{@@AnnotationSignChars}])/
+		if annotation =~ /(\w+):(\d+)\.\.(\d+),([#{@@AnnotationSignChars}])/
 			chromosome, start_pos, end_pos, sign = $1, $2, $3, $4
 
 			# setup nanopub
