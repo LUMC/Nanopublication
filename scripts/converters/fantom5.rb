@@ -5,46 +5,11 @@ require 'optparse'
 require 'rdf-agraph'
 require_relative 'converter'
 
-# Define some useful RDF vocabularies.
-FOAF = RDF::FOAF 
-DC = RDF::DC
-RDFS = RDF::RDFS
-XSD = RDF::XSD
-RSO = RDF::Vocabulary.new('http://rdf.biosemantics.org/ontologies/referencesequence#')
-HG19 = RDF::Vocabulary.new('http://rdf.biosemantics.org/data/genomeassemblies/hg19#')
-SO = RDF::Vocabulary.new('http://purl.org/obo/owl/SO#')
-FANTOM5 = RDF::Vocabulary.new('http://rdf.biosemantics.org/data/riken/fantom5/data#')
-PROV = RDF::Vocabulary.new('http://www.w3.org/ns/prov#')
-OBO = RDF::Vocabulary.new('http://purl.org/obo/owl/obo#')
-PAV = RDF::Vocabulary.new('http://swan.mindinformatics.org/ontologies/1.2/pav/')
-NP = RDF::Vocabulary.new('http://www.nanopub.org/nschema#')
-
-
-class Fantom5_Nanopub_Converter < RDF_Converter
+class Fantom5_Nanopub_Converter < RDF_Nanopub_Converter
 
 	@@AnnotationSignChars = '+-'
 
-	def initialize(options)
-		default = {
-			:server => 'localhost',
-			:port => 10035,
-			:base_url => 'http://rdf.biosemantics.org/nanopubs/riken/fantom5/',
-			:username => 'agraph',
-			:password => 'agraph',
-			:subtype => :cage_clusters
-		}
-
-		options = default.merge(options)
-		super
-
-		@server = AllegroGraph::Server.new(:host=>options[:host], :port=>options[:port], 
-										   :username=>options[:username], :password=>options[:password])
-		@catalog = options[:catalog].nil? ? @server : AllegroGraph::Catalog.new(@server, options[:catalog])
-		@repository = RDF::AllegroGraph::Repository.new(:server=>@catalog, :id=>options[:repository])
-		@repository.clear
-
-		@subtype = options[:subtype]
-	end
+	FANTOM5 = RDF::Vocabulary.new('http://rdf.biosemantics.org/data/riken/fantom5/data#')
 
 	def convert_header_row(row)
 		# do nothing
@@ -56,23 +21,26 @@ class Fantom5_Nanopub_Converter < RDF_Converter
 			@row_index += 1
 			annotation, shortDesc, description, transcriptAssociation, geneEntrez, geneHgnc, geneUniprot, *samples = row.split("\t")
 			#puts "#{annotation}, #{shortDesc}, #{description}"
-			case @subtype
-			when :cage_clusters
-				create_class1_nanopub(annotation)
-			when :gene_associations
-				create_class2_nanopub(annotation, transcriptAssociation, geneEntrez, geneHgnc, geneUniprot)
-			when :ff_expressions
-				create_class3_nanopub(annotation, samples)
+			case @options[:subtype]
+				when 'cage_clusters'
+					create_class1_nanopub(annotation)
+				when 'gene_associations'
+					create_class2_nanopub(annotation, transcriptAssociation, geneEntrez, geneHgnc, geneUniprot)
+				when 'ff_expressions'
+					create_class3_nanopub(annotation, samples)
 			end
 		end
 	end
 
 	protected
-	def insertGraph(g, triples)
-		g_uri = g.to_uri
-		for s, p, o in triples do
-			@repository.insert([s.to_uri, p, o, g_uri])
+	def get_options()
+		options = Slop.parse(:help => true) do
+			banner "ruby Fantom5_Nanopub_Converter.rb [options]\n"
+			on :base_url=, :default=>'http://rdf.biosemantics.org/nanopubs/riken/fantom5/'
+			on :subtype=, "nanopub subtype, choose from [cage_clusters, gene_associations, ff_expressions]"
 		end
+
+		return super.merge(options)
 	end
 
 	protected
@@ -92,7 +60,7 @@ class Fantom5_Nanopub_Converter < RDF_Converter
 			# assertion graph
 			location = FANTOM5["loc_#{annotation}"]
 			orientation = sign == '+' ? RSO.forward : RSO.reverse
-			insertGraph(assertion, [
+			save(assertion, [
 				[FANTOM5[annotation], RDF.type, SO.SO_0001917],
 				[FANTOM5[annotation], RSO.mapsTo, location],
 				[location, RDF.type, RSO.SequenceLocation],
@@ -134,7 +102,7 @@ class Fantom5_Nanopub_Converter < RDF_Converter
 				if transcript =~ /^NM_/
 					tss = FANTOM5["tss_#{transcript}"]
 					entrez_id = geneEntrez.split(':')[1]
-					insertGraph(assertion, [
+					save(assertion, [
 						[FANTOM5[annotation], RSO.is_observation_of, tss],
 						[tss, SO.part_of, RDF::URI.new("http://bio2rdf.org/geneid:#{entrez_id}")]
 					])
@@ -163,20 +131,9 @@ class Fantom5_Nanopub_Converter < RDF_Converter
 		# TODO
 	end
 
-
-	private 
-	def create_main_graph(nanopub, assertion, provenance, publicationInfo)
-		insertGraph(nanopub, [
-			[nanopub, RDF.type, NP.Nanopublicaiton],
-			[nanopub, NP.hasAssertion, assertion],
-			[nanopub, NP.hasProvenance, provenance],
-			[nanopub, NP.hasPublicationInfo, publicationInfo]
-		])
-	end
-
 	private 
 	def create_provenance_graph(provenance, assertion)
-		insertGraph(provenance, [
+		save(provenance, [
 			[assertion, OBO.RO_0003001, RDF::URI.new('http://rdf.biosemantics.org/data/riken/fantom5/experiment')],
 			[assertion, PROV.derivedFrom, RDF::URI.new("http://rdf.biosemantics.org/dataset/riken/fantom5/void/row_#{@row_index}")]
 		])
@@ -184,7 +141,7 @@ class Fantom5_Nanopub_Converter < RDF_Converter
 
 	private
 	def create_publication_info_graph(publicationInfo, nanopub)
-		insertGraph(publicationInfo, [
+		save(publicationInfo, [
 			[nanopub, PAV.authoredBy, RDF::URI.new('http://rdf.biosemantics.org/data/riken/fantom5/project')],
 			[nanopub, PAV.createdBy, 'Andrew Gibson'],
 			[nanopub, PAV.createdBy, 'Mark Thompson'],
@@ -196,66 +153,5 @@ class Fantom5_Nanopub_Converter < RDF_Converter
 	end
 end
 
-options = {}
-OptionParser.new do |opts|
- 	opts.banner = "Usage: fantom5.rb -i data.txt"
-
-	opts.on("-i", "--input ASSEMBLY") do |input|
-		options[:input] = input
-  	end
-
-	opts.on("-o", "--output FILENAME") do |output|
-		options[:output] = output
-	end
-
-	opts.on("--host HOSTNAME", 'default to localhost') do |host|
-		options[:host] = host 
-	end
-
-	opts.on("--port NUMBER", 'default to 10035') do |port|
-		options[:port] = port.to_i
-	end
-
-	opts.on("--catalog CATALOGNAME") do |catalog|
-		options[:catalog] = catalog
-	end
-
-	opts.on("--repository REPOSITORYNAME") do |repository|
-		options[:repository] = repository
-	end
-
-	opts.on("--base BASEURL") do |base_url|
-		options[:base_url] = base_url
-	end
-
-	opts.on("--username USERNAME") do |username|
-		options[:username] = username
-	end
-
-	opts.on("--password PASSWORD") do |password|
-		options[:password] = password
-	end
-
-	opts.on("--type [TYPE]", [:cage_clusters, :gene_associations, :ff_expressions],
-			"Select nanopublication subtype (cage_clusters, gene_associations, ff_expressions)") do |nanopub_type|
-		options[:subtype] = nanopub_type
-	end
-
-	# No argument, shows at tail.  This will print an options summary.
-	opts.on_tail("-h", "--help", "Show this message") do
-		puts opts
-		exit
-	end
-end.parse!
-
-# check for required arguments
-if options[:input].nil?
-	puts "input file is missing."
-	exit 1
-end
-
-puts options
-
 # do the work
-converter = Fantom5_Nanopub_Converter.new(options)
-converter.convert
+Fantom5_Nanopub_Converter.new.convert
