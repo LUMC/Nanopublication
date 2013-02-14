@@ -1,8 +1,4 @@
-require 'agraph'
 require 'rdf'
-require 'rdf/turtle'
-require 'optparse'
-require 'rdf-agraph'
 require 'logger'
 require 'slop'
 require_relative 'converter'
