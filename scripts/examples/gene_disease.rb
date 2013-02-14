@@ -1,3 +1,9 @@
+# Gene disease association nanopublication example.
+# The main ontology for assertion is Semanticscience Integrated Ontology (SIO).
+
+# Updated to nanopub schema 2.0
+
+
 #require 'rubygems'
 require 'rdf'
 require 'rdf/trig'
@@ -9,7 +15,7 @@ XSD = RDF::XSD
 NP = RDF::Vocabulary.new('http://www.nanopub.org/nschema#')
 SIO = RDF::Vocabulary.new('http://semanticscience.org/resource/')
 PAV = RDF::Vocabulary.new('http://swan.mindinformatics.org/ontologies/1.2/pav/')
-OPM = RDF::Vocabulary.new('http://purl.org/net/opmv/ns#')
+PROV = RDF::Vocabulary.new('http://www.w3.org/ns/prov#')
 base = RDF::Vocabulary.new('http://rdf.biosemantics.org/vocabularies/gene_disease_nanopub_example#')
 
 prefixes = {
@@ -20,21 +26,22 @@ prefixes = {
     :pav => PAV,
     :xsd => XSD,
     :rdfs => RDFS,
+    :prov => PROV,
     nil => base
 }
 
 
 nanopub = base.to_uri
 assertion = base.assertion
-attribution = base.attribution
-supporting = base.supporting
+provenance = base.provenance
+publicationInfo = base.publicationinfo
 
 # create the default graph
 graph = RDF::Graph.new(base)
 graph << [nanopub, RDF.type, NP.Nanopublication]
 graph << [nanopub, NP.hasAssertion, assertion]
-graph << [nanopub, NP.hasAttribution, attribution]
-graph << [nanopub, NP.hasSupporting, supporting]
+graph << [nanopub, NP.hasProvenance, provenance]
+graph << [nanopub, NP.hasPublicationInfo, publicationInfo]
 
 
 # create the assertion graph
@@ -53,33 +60,28 @@ assertion_graph << [association_1_p_value, RDF.type, SIO['probability-value']]
 assertion_graph << [association_1_p_value, SIO['has-value'], RDF::Literal.new(0.0000656211037469712, :datatype => XSD.float)]
 
 
-# create the attribution graph
-attribution_graph = RDF::Graph.new(attribution)
+# create the provenance graph
+provenance_graph = RDF::Graph.new(provenance)
 
-attribution_graph << [nanopub, DC.rights, URI('http://creativecommons.org/licenses/by/3.0/')]
-attribution_graph << [nanopub, DC.rightsHolder, URI('http://biosemantics.org')]
-attribution_graph << [nanopub, PAV.authoredBy, URI('http://www.researcherid.com/rid/B-6035-2012')]
-attribution_graph << [nanopub, PAV.authoredBy, URI('http://www.researcherid.com/rid/B-5927-2012')]
-attribution_graph << [nanopub, PAV.createdBy, URI('http://www.researcherid.com/rid/B-5852-2012')]
-attribution_graph << [nanopub, DC.created, RDF::Literal.new(Time.now.utc, :datatype => XSD.dateTime)]
-
-attribution_graph << [assertion, DC.created, RDF::Literal.new(Time.new(2012, 2, 9), :datatype => XSD.date)]
-attribution_graph << [assertion, PAV.authoredBy, URI('http://www.researcherid.com/rid/B-6035-2012')]
-attribution_graph << [assertion, PAV.authoredBy, URI('http://www.researcherid.com/rid/B-5927-2012')]
+provenance_graph << [assertion, PROV.wasDerivedFrom, RDF::URI.new('http://rdf.biosemantics.org/vocabularies/text_mining#gene_disease_concept_profiles_1980_2010')]
+provenance_graph << [assertion, PROV.wasGeneratedBy, RDF::URI.new('http://rdf.biosemantics.org/vocabularies/text_mining#gene_disease_concept_profiles_matching_1980_2010')]
 
 
-# create the supporting graph
-supporting_graph = RDF::Graph.new(supporting)
+# create the publication info graph
+publicationinfo_graph = RDF::Graph.new(publicationInfo)
 
-supporting_graph << [assertion, OPM.wasDerivedFrom, RDF::URI.new('http://rdf.biosemantics.org/vocabularies/text_mining#gene_disease_concept_profiles_1980_2010')]
-supporting_graph << [assertion, OPM.wasGeneratedBy, RDF::URI.new('http://rdf.biosemantics.org/vocabularies/text_mining#gene_disease_concept_profiles_matching_1980_2010')]
-
+publicationinfo_graph << [nanopub, DC.rights, URI('http://creativecommons.org/licenses/by/3.0/')]
+publicationinfo_graph << [nanopub, DC.rightsHolder, URI('http://biosemantics.org')]
+publicationinfo_graph << [nanopub, PAV.authoredBy, URI('http://www.researcherid.com/rid/B-6035-2012')]
+publicationinfo_graph << [nanopub, PAV.authoredBy, URI('http://www.researcherid.com/rid/B-5927-2012')]
+publicationinfo_graph << [nanopub, PAV.createdBy, URI('http://www.researcherid.com/rid/B-5852-2012')]
+publicationinfo_graph << [nanopub, DC.created, RDF::Literal.new(Time.now.utc, :datatype => XSD.dateTime)]
 
 # let's take a look at the graphs
 puts graph.dump(:trig, :prefixes => prefixes)
 puts assertion_graph.dump(:trig, :prefixes => prefixes)
-puts attribution_graph.dump(:trig, :prefixes => prefixes)
-puts supporting_graph.dump(:trig, :prefixes => prefixes)
+puts provenance_graph.dump(:trig, :prefixes => prefixes)
+puts publicationinfo_graph.dump(:trig, :prefixes => prefixes)
 
 # store it in a file
 RDF::TriG::Writer.open('test.trig') do |writer|
@@ -87,6 +89,6 @@ RDF::TriG::Writer.open('test.trig') do |writer|
   writer.base_uri = base
   writer << graph
   writer << assertion_graph
-  writer << attribution_graph
-  writer << supporting_graph
+  writer << provenance_graph
+  writer << publicationinfo_graph
 end
