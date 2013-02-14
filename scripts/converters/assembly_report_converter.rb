@@ -21,7 +21,7 @@ $prefixes = {
     :rdf => RDF,
     :xsd => XSD,
     :rdfs => RDFS,
-    :rs => RS,
+    :rso => RS,
     :ncbi => NCBI,
     :hg =>HG
 }
@@ -29,6 +29,7 @@ $prefixes = {
 # @param [Object] row
 def convert_reference_sequence(graph, row, base)
     name, role, cp, genbank_accn, refseq_accn, unit = row.split("\t")
+    name = role == 'chromosome' ? "chr#{name}" : name
     graph << [base[name], RDF.type, RS.ReferenceSequence]
     graph << [base[name], DC.partOf, base['Assembly']]
     graph << [base[name], NCBI.hasRole, NCBI[role.downcase.gsub(/[\s\-]/, '_')]]
